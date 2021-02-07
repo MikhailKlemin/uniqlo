@@ -53,6 +53,7 @@ func SelectUndone(conf config.DefaultConfig, gender, shape, chest, age int, clus
 }
 
 func random(min int, max int) int {
+	//fmt.Printf("min %d max %d", min, max)
 	return rand.Intn(max-min) + min
 }
 
@@ -68,9 +69,18 @@ func worker(task <-chan []generator.Combo, results chan<- myResult) {
 		fmt.Println(cs[0].Height)
 		temp := make(chan []scraper.Response)
 		go func(cs []generator.Combo) {
-			resp, err := scraper.Start(cs, rot.Get())
-			if err != nil {
-				log.Println(err)
+			var resp []scraper.Response
+			var err error
+			count := 0
+			for {
+				resp, err = scraper.Start(cs, rot.Get())
+				if err != nil && count < 10 {
+					log.Println(err)
+					count++
+					time.Sleep(2 * time.Second)
+					continue
+				}
+				break
 			}
 			temp <- resp
 		}(cs)
@@ -93,7 +103,8 @@ func Start(conf config.DefaultConfig, cluster string, gender, shape, chest, age 
 		return
 	}
 	combos, keys := SelectUndone(conf, gender, shape, chest, age, cluster)
-	serials, err := getSerialsByCluster(conf, cluster)
+	//serials, err := getSerialsByCluster(conf, cluster)
+	productLinks, err := getProdLinksByCluster(conf, cluster)
 
 	db, err := sql.Open("sqlite3", conf.DB)
 	if err != nil {
@@ -108,13 +119,25 @@ func Start(conf config.DefaultConfig, cluster string, gender, shape, chest, age 
 	task := make(chan []generator.Combo, len(keys))
 	results := make(chan myResult, len(keys))
 
-	for w := 0; w < 1; w++ {
+	for w := 0; w < 5; w++ {
 		go worker(task, results)
 	}
 
+	/*
+		for _, key := range keys {
+			for i := 0; i < len(combos[key]); i++ {
+				combos[key][i].Serial = serials[random(0, len(serials)-1)]
+			}
+		}
+	*/
+
 	for _, key := range keys {
 		for i := 0; i < len(combos[key]); i++ {
-			combos[key][i].Serial = serials[random(0, len(serials)-1)]
+			if len(productLinks) > 1 {
+				combos[key][i].ProdLink = productLinks[random(0, len(productLinks)-1)]
+			} else {
+				combos[key][i].ProdLink = productLinks[0]
+			}
 		}
 	}
 
@@ -162,6 +185,31 @@ func getSerialsByCluster(conf config.DefaultConfig, cluster string) (serials []i
 		var serial int64
 		row.Scan(&serial)
 		serials = append(serials, serial)
+	}
+
+	return
+}
+
+func getProdLinksByCluster(conf config.DefaultConfig, cluster string) (links []string, err error) {
+
+	db, err := sql.Open("sqlite3", conf.DB)
+	if err != nil {
+		//log.Fatal(err)
+		return
+	}
+	defer db.Close()
+	q := `select link from products_data where cluster_id = ? and updated>"2021-02-03";`
+
+	row, err := db.Queryx(q, cluster)
+	if err != nil {
+		//log.Fatal(err)
+		return
+	}
+
+	for row.Next() {
+		var link string
+		row.Scan(&link)
+		links = append(links, link)
 	}
 
 	return

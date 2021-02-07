@@ -21,7 +21,8 @@ type Combo struct {
 	Age        int    `db:"age"`
 	Preference int    `db:"preference"`
 	Serial     int64  `db:"serial"`
-	Cookie     []byte `db:"cookie"`
+	ProdLink   string `db:"link"`
+	//Cookie     []byte `db:"cookie"`
 
 	//fit_results table
 	BestFitSize    string
@@ -115,7 +116,7 @@ func GenerateAndPopulate(conf config.DefaultConfig) {
 
 	var shapes = []int{1, 2, 3}
 	var chests = []int{1, 2, 3}
-	var ages = []int{20, 22, 24}
+	var ages = []int{30, 40, 50, 60, 70}
 	const preference = 1
 	var combos []Combo
 

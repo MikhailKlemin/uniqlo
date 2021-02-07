@@ -86,8 +86,8 @@ func Start(combos []generator.Combo, proxy string) (rs []Response, err error) {
 	//fmt.Println(link)
 	l := launcher.New().
 		Set("proxy-server", "socks5://"+proxy). // add a flag, here we set a http proxy
-		Headless(false).
-		Set("blink-settings", "imagesEnabled=false").
+		Headless(true).
+		Set("blink-settings", "imagesEnabled=true").
 		Devtools(false)
 
 	defer l.Cleanup() // remove user-data-dir
@@ -360,18 +360,45 @@ func InitWith(browser *rod.Browser, p generator.Combo) (resp Response, page *rod
 	resp.Serial = p.Serial
 	resp.Shape = p.Shape
 	resp.FitMatrixID = int64(p.ID)
-	//resp.
 
-	link := fmt.Sprintf("https://www.uniqlo.com/uk/en/product/%d.html", p.Serial)
+	//link := fmt.Sprintf("https://www.uniqlo.com/uk/en/product/%d.html", p.Serial)
+	link := fmt.Sprintf("%s", p.ProdLink)
+	fmt.Println(p.ProdLink)
+
 	err = rod.Try(func() {
 		page = browser.MustPage(link)
 	})
 	if err != nil {
+		fmt.Println(link)
+		//log.Fatal(err)
 		return resp, page, errors.Wrap(err, fmt.Sprintf("Cannot navigate to %s", link))
 	}
 
-	err = page.WaitLoad()
-
+	page.WaitLoad()
+	page.WaitIdle(5 * time.Second)
+	xcount := 0
+	for {
+		xcount++
+		elems := page.Timeout(30 * time.Second).MustElements("#fitanalytics__button")
+		if len(elems) == 0 {
+			log.Println("Looks like no fit button")
+			elems = page.MustElements("a.productTile__link")
+			if len(elems) > 0 {
+				err := rod.Try(func() {
+					elems[0].MustClick()
+				})
+				if err != nil {
+					return resp, page, errors.Wrap(err, fmt.Sprintf("Cannot find link to product"))
+				}
+				page.WaitLoad()
+			}
+			if xcount < 10 {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+		}
+		break
+	}
 	var elem *rod.Element
 
 	err = rod.Try(func() {
@@ -390,81 +417,92 @@ func InitWith(browser *rod.Browser, p generator.Combo) (resp Response, page *rod
 
 	page.WaitLoad()
 
-	heightSel := "#uclw_form_height"
-	weightSel := "#uclw_form_weight"
-	cmSel := "#uclw_height_element > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1) > div:nth-child(1)"
-	kgSel := "#uclw_weight_element > div:nth-child(1) > div:nth-child(1) > div:nth-child(2)"
-
-	// setting cms
-	err = rod.Try(func() {
-		elem = page.MustSearch(cmSel)
-
-	})
+	//####################################################################################################
+	//Setting measurements units
+	err = setMeasurements(page, p.Height, p.Weight)
 	if err != nil {
-		return resp, page, errors.Wrap(err, fmt.Sprintf("Cannot find input text at %s", link))
+		return resp, page, errors.Wrap(err, "Cannot set measurrements")
+	}
+	//####################################################################################################
+
+	//####################################################################################################
+	//Setting Tummy units
+
+	header, err := getHeader(page)
+	if err != nil {
+		return resp, page, errors.Wrap(err, "Cannot get header")
 
 	}
-	elem.MustClick()
-
-	// setting kgs
-	err = rod.Try(func() {
-		elem = page.MustSearch(kgSel)
-
-	})
-	if err != nil {
-
+	if header == "Your tummy shape" {
+		err = setTummy(page, p.Shape)
 	}
-	elem.MustClick()
+	//####################################################################################################
 
-	// setting height
-	err = rod.Try(func() {
-		elem = page.MustSearch(heightSel)
+	//####################################################################################################
+	//Setting Chges units
 
-	})
+	header, err = getHeader(page)
 	if err != nil {
-		return resp, page, errors.Wrap(err, fmt.Sprintf("Cannot find input text at %s", link))
-
+		return resp, page, errors.Wrap(err, "Cannot get header")
 	}
 
-	elem.MustInput(fmt.Sprintf("%d", p.Height))
+	if header == "Your chest shape" {
+		//click average shape
+		err = setChest(page, p.Chest)
+		if err != nil {
+			return resp, page, errors.Wrap(err, "Cannot set chest")
 
-	// setting weight
-	err = rod.Try(func() {
-		elem = page.MustSearch(weightSel)
-
-	})
-	if err != nil {
-		return resp, page, errors.Wrap(err, fmt.Sprintf("Cannot find input text at %s", link))
-
+		}
 	}
-	elem.MustInput(fmt.Sprintf("%d", p.Weight))
+	//####################################################################################################
 
-	page.WaitLoad()
+	header, err = getHeader(page)
+	if err != nil {
+		return resp, page, errors.Wrap(err, "Cannot get header")
+	}
 
-	//click next
-	page.MustSearch("#uclw_save_info_button").MustClick()
-	page.WaitLoad()
+	if header == "How old are you?" {
+		//click average shape
+		err = setAge(page, p.Age)
+		if err != nil {
+			return resp, page, errors.Wrap(err, "Cannot set chest")
 
-	//click average tummy
-	page.MustSearch(fmt.Sprintf("#uclw_item_shape_%d", p.Shape)).WaitStable(2 * time.Second)
-	page.MustSearch(fmt.Sprintf("#uclw_item_shape_%d", p.Shape)).MustClick()
-	//page.WaitLoad()
+		}
+	}
 
-	//click average shape
-	page.MustSearch(fmt.Sprintf("#uclw_item_shape_%d", p.Chest)).WaitStable(2 * time.Second)
-	page.MustSearch(fmt.Sprintf("#uclw_item_shape_%d", p.Chest)).MustClick()
-	page.WaitLoad()
+	header, err = getHeader(page)
+	if err != nil {
+		return resp, page, errors.Wrap(err, "Cannot get header")
+	}
 
-	//enter age
-	page.MustSearch(".uclw_input_text").MustInput(fmt.Sprintf("%d", p.Age))
+	if header == "Fit preference" {
+		//click average shape
+		err = setFit(page)
+		if err != nil {
+			return resp, page, errors.Wrap(err, "Cannot set chest")
 
-	//save button
-	page.MustSearch("#uclw_save_info_button").MustClick()
-	page.WaitLoad()
+		}
+	}
+
+	time.Sleep(2 * time.Second)
+	header, err = getHeader(page)
+	if err != nil {
+		return resp, page, errors.Wrap(err, "Cannot get header")
+	}
+
+	if header == "What do you wear?" {
+		//click average shape
+		log.Println("Setting up Legs ")
+		err = setLegsSize(page)
+		if err != nil {
+			return resp, page, errors.Wrap(err, "Cannot set chest")
+
+		}
+	}
 
 	//fit preference
-	page.MustSearch(".uclw_noUi-base").WaitStable(2 * time.Second)
-	page.MustSearch("#uclw_save_info_button").MustClick()
+	//page.MustSearch(".uclw_noUi-base").WaitStable(2 * time.Second)
+	//page.MustSearch("#uclw_save_info_button").MustClick()
 
 	page.MustSearch("#primary_label").WaitStable(2 * time.Second)
 	//size, _ := page.MustSearch("#primary_label").Text()

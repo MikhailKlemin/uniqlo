@@ -64,11 +64,11 @@ func main() {
 
 	var conf = config.NewDefaultConfig()
 
-	//crawler.CollectProducts(conf)
-	//crawler.CollectSizes(conf)
-	//fitanalytic.CheckForFitLink(conf)
-	//os.Exit(1)
-
+	/*crawler.CollectProducts(conf)
+	crawler.CollectSizes(conf)
+	fitanalytic.CheckForFitLink(conf)
+	os.Exit(1)
+	*/
 	//sizer.Generate()
 	//generator.GenerateAndPopulate(conf)
 	//sizer.GetSerialsCluster(conf)
@@ -94,7 +94,7 @@ func main() {
 		gender = 0
 		shape  = 1
 		chest  = 1
-		age    = 20
+		//age    = 30 //20, 30, 40, 50, 60, 70
 	)
 
 	var clusters []string
@@ -116,7 +116,7 @@ func main() {
 
 	for _, cluster := range clusters {
 		fmt.Println("Starting ", cluster)
-		sizer.Start(conf, cluster, gender, shape, chest, age)
+		sizer.Start(conf, cluster, gender, shape, chest, conf.Age)
 	}
 	fmt.Printf("Done in %s\n", time.Since(t))
 
