@@ -5,6 +5,7 @@ import (
 	"crypto/sha1"
 	"database/sql"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/http"
@@ -12,11 +13,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MikhailKlemin/uniclo.uk/pkg/analyzer"
 	"github.com/MikhailKlemin/uniclo.uk/pkg/config"
-	"github.com/MikhailKlemin/uniclo.uk/pkg/product"
+	"github.com/MikhailKlemin/uniclo.uk/pkg/crawler/product"
 	"github.com/gocolly/colly/v2"
 	"github.com/gocolly/colly/v2/proxy"
+	"github.com/pkg/errors"
+	"golang.org/x/net/html"
 )
 
 var serialRe = regexp.MustCompile(`\d{6}`)
@@ -254,7 +256,7 @@ func CollectSizes(conf config.DefaultConfig) {
 				serial := getSerial(j.link)
 				if _, ok := um[serial]; !ok {
 					um[serial] = true
-					tokenized, err := analyzer.Tokenize(bytes.NewReader(j.value))
+					tokenized, err := Tokenize(bytes.NewReader(j.value))
 					if err != nil {
 						log.Fatal(err)
 					}
@@ -379,4 +381,55 @@ func loadProxy() []string {
 
 	return proxies
 
+}
+
+//Tokenize tokenizes the size table
+func Tokenize(r io.Reader) (string, error) {
+	textTags := []string{
+		"td",
+		//		"p", "span", "em", "string", "blockquote", "q", "cite",
+		//		"h1", "h2", "h3", "h4", "h5", "h6", "pre", "ul", "li", "ol",
+		//		"mark", "ins", "del", "small", "i", "b",
+	}
+
+	tag := ""
+	enter := false
+	var text []string
+	tokenizer := html.NewTokenizer(r)
+	for {
+		tt := tokenizer.Next()
+		token := tokenizer.Token()
+
+		err := tokenizer.Err()
+		if err == io.EOF {
+			break
+		}
+
+		switch tt {
+		case html.ErrorToken:
+			//log.Fatal(err)
+			return "", errors.Wrap(err, "can't parse token")
+		case html.StartTagToken, html.SelfClosingTagToken:
+			enter = false
+
+			tag = token.Data
+			for _, ttt := range textTags {
+				if tag == ttt {
+					enter = true
+					break
+				}
+			}
+		case html.TextToken:
+			if enter {
+				data := strings.TrimSpace(token.Data)
+
+				if len(data) > 0 {
+					//fmt.Println(data)
+					text = append(text, data)
+				}
+			}
+		}
+	}
+
+	return strings.Join(text, " "), nil
 }

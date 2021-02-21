@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log"
 
-	"github.com/MikhailKlemin/uniclo.uk/pkg/client"
 	"github.com/MikhailKlemin/uniclo.uk/pkg/config"
+	"github.com/MikhailKlemin/uniclo.uk/pkg/fitanalytic/client"
 	"github.com/MikhailKlemin/uniclo.uk/pkg/rotator"
 )
 
